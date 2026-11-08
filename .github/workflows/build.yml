@@ -9,8 +9,6 @@ on:
 
 jobs:
   build-android:
-    # Keep the CI runner on Ubuntu 22.04 rather than an environment
-    # that supplies Python 3.14 by default.
     runs-on: ubuntu-22.04
 
     steps:
@@ -25,12 +23,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \\
-            git zip unzip openjdk-17-jdk \\
-            autoconf libtool pkg-config \\
-            zlib1g-dev libncurses5-dev libncursesw5-dev \\
-            libtinfo5 cmake libffi-dev libssl-dev \\
-            automake
+          sudo apt-get install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev automake
 
       - name: Install pinned build tools
         run: |
