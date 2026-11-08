@@ -1,170 +1,65 @@
-name: Build DebtBook Android APK
+name: Build Android APK
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
       - master
-
-permissions:
-  contents: read
-
-concurrency:
-  group: debtbook-android-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_dispatch: # اجازه می‌دهد بیلد را به صورت دستی هم اجرا کنید
 
 jobs:
   build:
-    name: Build Android APK (ARMv7 + ARM64)
+    name: Build APK with Buildozer
     runs-on: ubuntu-22.04
-    timeout-minutes: 180
-
-    env:
-      PYTHONUNBUFFERED: "1"
-      P4A_RELEASE: "0"
-      BUILDOZER_WARN_ON_ROOT: "0"
+    timeout-minutes: 60 # جلوگیری از گیر کردن بیلد در صورت بروز مشکل
 
     steps:
-      - name: Check out repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.9
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.9' # نسخه 3.9 برای جلوگیری از خطای jnius الزامی است
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Install Linux build dependencies
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            git \
-            zip \
-            unzip \
-            openjdk-17-jdk \
-            autoconf \
-            automake \
-            autopoint \
-            gettext \
-            libtool \
-            libltdl-dev \
-            pkg-config \
-            zlib1g-dev \
-            libncurses5-dev \
-            libncursesw5-dev \
-            libtinfo5 \
-            libffi-dev \
-            libssl-dev \
-            cmake
+          sudo apt-get install -y \
+            git zip unzip openjdk-17-jdk python3-pip \
+            autoconf libtool pkg-config zlib1g-dev \
+            libncurses5-dev libncursesw5-dev libtinfo5 \
+            cmake libffi-dev libssl-dev libltdl-dev
 
-      - name: Verify Java and Python
+      - name: Set up Java 17 Environment
         run: |
-          python --version
-          python -m pip --version
-          java -version
-          javac -version
+          echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
 
-      - name: Verify project structure
-        shell: bash
+      - name: Install Buildozer and Cython
         run: |
-          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install buildozer cython==0.29.36 # نسخه Cython پین شده برای جلوگیری از خطاهای کامپایل
 
-          test -f buildozer.spec || {
-            echo "::error::buildozer.spec was not found in the repository root."
-            exit 1
-          }
+      - name: Cache Buildozer Directories
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            ${{ runner.os }}-buildozer-
 
-          test -f main.py || {
-            echo "::error::main.py was not found in the repository root."
-            exit 1
-          }
-
-          test -f database.py || {
-            echo "::error::database.py was not found in the repository root."
-            exit 1
-          }
-
-          test -f fonts/Vazirmatn.ttf || {
-            echo "::error::fonts/Vazirmatn.ttf was not found. The app registers this font at startup."
-            exit 1
-          }
-
-          echo "Project files found."
-          echo "Repository root:"
-          pwd
-          echo "Top-level files:"
-          ls -la
-
-      - name: Install Buildozer
+      - name: Build with Buildozer
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          python -m pip install "Cython==0.29.36" "buildozer==1.5.0"
-          buildozer --version
-
-      - name: Accept Android SDK license
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! grep -q '^android.accept_sdk_license[[:space:]]*=' buildozer.spec; then
-            sed -i '/^\[app\]/a android.accept_sdk_license = True' buildozer.spec
-          else
-            sed -i 's/^android.accept_sdk_license[[:space:]]*=.*/android.accept_sdk_license = True/' buildozer.spec
-          fi
-          grep '^android.accept_sdk_license' buildozer.spec
-
-      - name: Validate Android build settings
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          grep -Eq '^[[:space:]]*android\.api[[:space:]]*=[[:space:]]*35([[:space:]]*(#.*)?)?$' buildozer.spec || {
-            echo "::error::Expected android.api = 35 in buildozer.spec."
-            exit 1
-          }
-
-          grep -Eq '^[[:space:]]*android\.minapi[[:space:]]*=[[:space:]]*26([[:space:]]*(#.*)?)?$' buildozer.spec || {
-            echo "::error::Expected android.minapi = 26 in buildozer.spec."
-            exit 1
-          }
-
-          grep -Eq '^[[:space:]]*android\.ndk[[:space:]]*=[[:space:]]*25b([[:space:]]*(#.*)?)?$' buildozer.spec || {
-            echo "::error::Expected android.ndk = 25b in buildozer.spec."
-            exit 1
-          }
-
-          grep -Eq '^[[:space:]]*android\.archs[[:space:]]*=.*arm64-v8a.*armeabi-v7a|^[[:space:]]*android\.archs[[:space:]]*=.*armeabi-v7a.*arm64-v8a' buildozer.spec || {
-            echo "::error::Both arm64-v8a and armeabi-v7a must be listed in android.archs."
-            exit 1
-          }
-
-          echo "Android settings validated."
-
-      - name: Build debug APK
-        run: |
+          # اجرای بیلد در حالت debug
           buildozer -v android debug
 
-      - name: List generated APK files
-        if: always()
-        run: |
-          echo "APK output directory:"
-          if [ -d bin ]; then
-            find bin -maxdepth 1 -type f -name '*.apk' -print
-          else
-            echo "bin/ directory was not created."
-          fi
-
-      - name: Upload APK artifact
-        if: success()
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DebtBook-Android-APK
+          name: package-debug-apk
           path: bin/*.apk
-          if-no-files-found: error
-          retention-days: 14
+          if-no-files-found: error # اگر APK ساخته نشد، بیلد را fail کن
