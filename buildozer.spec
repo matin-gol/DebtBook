@@ -1,56 +1,44 @@
 [app]
 
-# نام و شناسه برنامه
+# Application identity
 title = DebtBook
 package.name = debtbook
 package.domain = org.debtbook
 
-# مسیر کد اصلی؛ main.py باید در همین پوشه باشد
+# Source layout
 source.dir = .
+source.include_exts = py,kv,png,jpg,jpeg,atlas,ttf,otf
+source.exclude_dirs = .git,.github,.buildozer,bin,__pycache__,.venv,venv
 
-# فایل‌های لازم برای اجرا
-# شامل فایل‌های Python و فونت فارسی Vazirmatn
-source.include_exts = py,kv,png,jpg,jpeg,atlas,ttf
-source.include_patterns = fonts/*.ttf
-
-# حذف فایل‌ها و پوشه‌های غیرضروری از بسته
-source.exclude_exts = spec,yml,yaml,md,db,sqlite,sqlite3,log,pyc
-source.exclude_dirs = .git,.github,.buildozer,bin,venv,.venv,__pycache__,tests,.pytest_cache
-source.exclude_patterns = *.spec,*.yml,*.yaml,*.md,*.db,*.sqlite,*.sqlite3,*.log,*.pyc
-
-# نسخه برنامه
+# Application version
 version = 1.0.0
 
-# وابستگی‌ها
-# sqlite3 و pathlib جزو کتابخانه‌های استاندارد پایتون هستند و جداگانه نصب نمی‌شوند.
-requirements = python3,kivy==2.3.0,kivymd==1.2.0,arabic-reshaper,python-bidi
+# Python-for-Android requirements.
+# sqlite3 and pathlib are part of Python's standard library.
+requirements = python3,kivy==2.3.1,kivymd==1.2.0,arabic-reshaper,python-bidi
 
-# تنظیمات رابط کاربری
+# Display
 orientation = portrait
 fullscreen = 0
 
-# تنظیمات اندروید
+# Android build configuration
+p4a.bootstrap = sdl2
 android.api = 35
 android.minapi = 26
-android.ndk = 25b
-android.ndk_api = 26
-
-# ساخت برای هر دو معماری ARM:
-# 32-bit: armeabi-v7a
-# 64-bit: arm64-v8a
+android.ndk = 28c
 android.archs = arm64-v8a,armeabi-v7a
+android.accept_sdk_license = True
+android.debug_artifact = apk
+android.release_artifact = apk
 
-# استفاده از SDL2 برای برنامه‌های Kivy
-p4a.bootstrap = sdl2
+# Keep Python-for-Android on its stable branch for this Python/Kivy stack.
+p4a.branch = master
 
-# نسخه/شاخه python-for-android
-p4a.fork = kivy
-p4a.branch = develop
+# No network, camera, location, or other Android permissions are used by
+# the inspected application, so no permissions are requested.
 
-# مجوز اضافه‌ای لازم نیست؛ دیتابیس داخل user_data_dir ذخیره می‌شود.
-# android.permissions =
-
-# تنظیمات عمومی Buildozer
 [buildozer]
+
+# Build output and tool working directories are managed by Buildozer.
 log_level = 2
 warn_on_root = 1
