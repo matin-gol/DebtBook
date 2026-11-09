@@ -1,218 +1,69 @@
-name: Build DebtBook Android APKs
+name: Build DebtBook Android APK
 
 on:
-  push:
-    branches:
-      - main
-      - master
   workflow_dispatch:
-
-permissions:
-  contents: read
-
-concurrency:
-  group: debtbook-android-${{ github.ref }}
-  cancel-in-progress: true
+  push:
 
 jobs:
-  build:
-    name: Build Android APKs (ARMv7 and ARM64)
+  build-android:
     runs-on: ubuntu-22.04
-    timeout-minutes: 180
-
-    env:
-      PYTHONUNBUFFERED: "1"
-      BUILDOZER_WARN_ON_ROOT: "0"
+    timeout-minutes: 120
 
     steps:
-      - name: Check out repository
+      - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Locate and validate DebtBook files
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          echo "GitHub workspace: $GITHUB_WORKSPACE"
-          echo "Current directory: $(pwd)"
-          echo "Repository root contents:"
-          ls -la
-
-          # Recover only a single unambiguous misplaced spec file.
-          if [[ ! -f "./buildozer.spec" ]]; then
-            mapfile -t candidates < <(
-              find . -maxdepth 5 -type f \
-                \( -name "buildozer.spec" -o -name "buildozer.spec.txt" \) \
-                ! -path "./.git/*" \
-                ! -path "./.buildozer/*" \
-                ! -path "./bin/*" \
-                | sort
-            )
-
-            if [[ "${#candidates[@]}" -eq 1 ]]; then
-              echo "Found spec candidate: ${candidates[0]}"
-              cp "${candidates[0]}" "./buildozer.spec"
-            elif [[ "${#candidates[@]}" -gt 1 ]]; then
-              echo "::error::Multiple buildozer.spec candidates found. Keep one buildozer.spec in the repository root."
-              printf '%s\n' "${candidates[@]}"
-              exit 1
-            else
-              echo "::error::buildozer.spec was not found."
-              echo "Expected: $GITHUB_WORKSPACE/buildozer.spec"
-              exit 1
-            fi
-          fi
-
-          test -f "./main.py" || {
-            echo "::error::main.py is missing from the repository root."
-            exit 1
-          }
-
-          test -f "./database.py" || {
-            echo "::error::database.py is missing from the repository root."
-            exit 1
-          }
-
-          test -f "./fonts/Vazirmatn.ttf" || {
-            echo "::error::fonts/Vazirmatn.ttf is missing. main.py registers this font."
-            exit 1
-          }
-
-          grep -Eq '^[[:space:]]*p4a\.branch[[:space:]]*=[[:space:]]*develop([[:space:]]*(#.*)?)?$' buildozer.spec || {
-            echo "::error::Expected p4a.branch = develop."
-            exit 1
-          }
-
-          grep -Eq '^[[:space:]]*p4a\.commit[[:space:]]*=[[:space:]]*0382d27de2f7315ed98e74884bafb30365decdee([[:space:]]*(#.*)?)?$' buildozer.spec || {
-            echo "::error::Expected the verified P4A pip-fix commit on the develop branch."
-            exit 1
-          }
-
-          grep -Fq 'python3==3.12.9' buildozer.spec || {
-            echo "::error::python3 must be pinned to 3.12.9."
-            exit 1
-          }
-
-          grep -Fq 'hostpython3==3.12.9' buildozer.spec || {
-            echo "::error::hostpython3 must be pinned to 3.12.9 to match python3."
-            exit 1
-          }
-
-          grep -Eq '^[[:space:]]*android\.api[[:space:]]*=[[:space:]]*35([[:space:]]*(#.*)?)?$' buildozer.spec || {
-            echo "::error::Expected android.api = 35."
-            exit 1
-          }
-
-          grep -Eq '^[[:space:]]*android\.minapi[[:space:]]*=[[:space:]]*26([[:space:]]*(#.*)?)?$' buildozer.spec || {
-            echo "::error::Expected android.minapi = 26."
-            exit 1
-          }
-
-          grep -Eq '^[[:space:]]*android\.ndk[[:space:]]*=[[:space:]]*25c([[:space:]]*(#.*)?)?$' buildozer.spec || {
-            echo "::error::Expected android.ndk = 25c."
-            exit 1
-          }
-
-          grep -Eq '^[[:space:]]*android\.archs[[:space:]]*=.*armeabi-v7a.*arm64-v8a|^[[:space:]]*android\.archs[[:space:]]*=.*arm64-v8a.*armeabi-v7a' buildozer.spec || {
-            echo "::error::Both armeabi-v7a and arm64-v8a must be listed in android.archs."
-            exit 1
-          }
-
-          echo
-          echo "Project structure and build settings validated."
-          echo "Buildozer spec: $GITHUB_WORKSPACE/buildozer.spec"
-          echo "P4A branch: develop"
-          echo "P4A commit: 0382d27de2f7315ed98e74884bafb30365decdee"
-          echo "Android Python / hostpython: 3.12.9 / 3.12.9"
-
-      - name: Set up host Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10.22"
+          python-version: "3.11"
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Install Linux build dependencies
-        shell: bash
+      - name: Install system dependencies
         run: |
-          set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get install -y \
             build-essential \
+            ccache \
             git \
             zip \
             unzip \
             openjdk-17-jdk \
+            python3-pip \
+            python3-venv \
             autoconf \
-            automake \
-            autopoint \
-            gettext \
             libtool \
-            libltdl-dev \
             pkg-config \
             zlib1g-dev \
             libncurses5-dev \
             libncursesw5-dev \
-            libtinfo5 \
+            libtinfo6 \
+            cmake \
             libffi-dev \
             libssl-dev \
-            cmake
+            automake \
+            autopoint \
+            gettext
 
-      - name: Install pinned Buildozer tools
-        shell: bash
+      - name: Install Buildozer
         run: |
-          set -euo pipefail
-          python -m venv .venv-build
-          source .venv-build/bin/activate
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install "buildozer==1.6.0"
 
-          # This pins the outer Buildozer environment only.
-          # The P4A commit above independently fixes its own build/venv.
-          python -m pip install --no-cache-dir \
-            "pip==24.3.1" \
-            "setuptools==75.8.0" \
-            "wheel==0.45.1"
-
-          python -m pip install --no-cache-dir \
-            "Cython==0.29.36" \
-            "buildozer==1.5.0"
-
-          python --version
-          python -m pip --version
-          buildozer --version
-
-      - name: Clean previous Android build outputs
-        shell: bash
+      - name: Verify project files
         run: |
-          set -euo pipefail
-          rm -rf .buildozer bin
-          echo "Removed project-local Buildozer cache and old APK outputs."
+          test -f buildozer.spec
+          test -f main.py
+          test -f database.py
+          test -f fonts/Vazirmatn.ttf
 
-      - name: Build debug APKs
-        shell: bash
+      - name: Build universal APK (ARMv7 + ARM64)
         run: |
-          set -euo pipefail
-          source .venv-build/bin/activate
           buildozer -v android debug
 
-      - name: Show generated APK files
-        if: always()
-        shell: bash
-        run: |
-          if [ -d bin ]; then
-            find bin -maxdepth 1 -type f -name '*.apk' -print
-          else
-            echo "No bin/ directory was generated."
-          fi
-
-      - name: Upload APK artifacts
-        if: success()
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: DebtBook-Android-APKs
+          name: DebtBook-universal-APK
           path: bin/*.apk
           if-no-files-found: error
           retention-days: 14
