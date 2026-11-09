@@ -28,8 +28,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # Buildozer runs on Python 3.10; p4a's Android Python is selected
-      # by the pinned p4a revision, not by this host interpreter.
       - name: Set up host Python
         uses: actions/setup-python@v5
         with:
@@ -67,28 +65,28 @@ jobs:
             libssl-dev \
             cmake
 
-      - name: Create isolated build environment
+      - name: Create isolated Buildozer environment
         shell: bash
         run: |
           set -euo pipefail
           python -m venv .venv-build
           source .venv-build/bin/activate
 
-          # Keep pip on a version compatible with the pinned p4a tooling.
-          # Do not run an unpinned "pip install -U pip" during the build.
+          # Pin host packaging tools. Do not run an unpinned pip upgrade
+          # inside python-for-android's own build virtual environment.
           python -m pip install --no-cache-dir \
             "pip==24.3.1" \
             "setuptools==75.8.0" \
             "wheel==0.45.1"
-
           python -m pip install --no-cache-dir \
             "Cython==0.29.36" \
             "buildozer==1.5.0"
 
+          python --version
           python -m pip --version
           buildozer --version
 
-      - name: Validate project files and build configuration
+      - name: Validate repository files and Android settings
         shell: bash
         run: |
           set -euo pipefail
@@ -110,14 +108,22 @@ jobs:
             exit 1
           }
 
+          grep -Eq '^[[:space:]]*p4a\.branch[[:space:]]*=[[:space:]]*master([[:space:]]*(#.*)?)?$' buildozer.spec || {
+            echo "::error::p4a.branch must be master for this configuration."
+            exit 1
+          }
+
+          if grep -Eq '^[[:space:]]*p4a\.commit[[:space:]]*=' buildozer.spec; then
+            echo "::error::Remove p4a.commit; this workflow intentionally uses the branch HEAD."
+            exit 1
+          fi
+
           grep -Eq '^[[:space:]]*android\.api[[:space:]]*=[[:space:]]*35([[:space:]]*(#.*)?)?$' buildozer.spec
           grep -Eq '^[[:space:]]*android\.minapi[[:space:]]*=[[:space:]]*26([[:space:]]*(#.*)?)?$' buildozer.spec
           grep -Eq '^[[:space:]]*android\.ndk[[:space:]]*=[[:space:]]*25c([[:space:]]*(#.*)?)?$' buildozer.spec
-          grep -Eq '^[[:space:]]*p4a\.commit[[:space:]]*=[[:space:]]*0382d27de2f7315ed98e74884bafb30365decdee([[:space:]]*(#.*)?)?$' buildozer.spec
-
           grep -Eq '^[[:space:]]*android\.archs[[:space:]]*=.*armeabi-v7a.*arm64-v8a|^[[:space:]]*android\.archs[[:space:]]*=.*arm64-v8a.*armeabi-v7a' buildozer.spec
 
-          echo "Required source files and Android settings are present."
+          echo "Project structure and Android configuration validated."
 
       - name: Build debug APKs
         shell: bash
@@ -126,7 +132,7 @@ jobs:
           source .venv-build/bin/activate
           buildozer -v android debug
 
-      - name: Show generated APKs
+      - name: Show generated APK files
         if: always()
         shell: bash
         run: |
