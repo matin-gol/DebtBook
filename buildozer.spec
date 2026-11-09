@@ -1,44 +1,49 @@
 [app]
 
-# Application identity
+# DebtBook - Kivy / KivyMD Android application
 title = DebtBook
 package.name = debtbook
 package.domain = org.debtbook
 
-# Source layout
+# The repository root must contain main.py and database.py.
 source.dir = .
-source.include_exts = py,kv,png,jpg,jpeg,atlas,ttf,otf
-source.exclude_dirs = .git,.github,.buildozer,bin,__pycache__,.venv,venv
+source.include_exts = py,kv,atlas,png,jpg,jpeg,ttf,otf
+source.include_patterns = fonts/*.ttf
+source.exclude_dirs = .git,.github,.buildozer,bin,__pycache__,venv,.venv,tests,.pytest_cache
+source.exclude_exts = spec,yml,yaml,md,db,sqlite,sqlite3,log,pyc
+source.exclude_patterns = *.spec,*.yml,*.yaml,*.md,*.db,*.sqlite,*.sqlite3,*.log,*.pyc
 
-# Application version
 version = 1.0.0
 
-# Python-for-Android requirements.
-# sqlite3 and pathlib are part of Python's standard library.
-requirements = python3,kivy==2.3.1,kivymd==1.2.0,arabic-reshaper,python-bidi
+# sqlite3 and pathlib are included in Python's standard library.
+# Keep KivyMD 1.2.0 because the app uses its 1.x widget API.
+requirements = python3,hostpython3,kivy==2.3.1,kivymd==1.2.0,arabic-reshaper==3.0.0,python-bidi==0.4.2,future
 
-# Display
 orientation = portrait
 fullscreen = 0
 
-# Android build configuration
-p4a.bootstrap = sdl2
-android.api = 35
+# Android 8.0 (API 26) and newer; target API 35.
 android.minapi = 26
-android.ndk = 28c
-android.archs = arm64-v8a,armeabi-v7a
+android.api = 35
+android.ndk_api = 26
+android.ndk = 25c
+
+# Build both 32-bit and 64-bit ARM APK variants.
+android.archs = armeabi-v7a,arm64-v8a
+
+android.private_storage = True
 android.accept_sdk_license = True
+android.enable_androidx = True
 android.debug_artifact = apk
 android.release_artifact = apk
 
-# Keep Python-for-Android on its stable branch for this Python/Kivy stack.
+p4a.bootstrap = sdl2
+p4a.fork = kivy
 p4a.branch = master
-
-# No network, camera, location, or other Android permissions are used by
-# the inspected application, so no permissions are requested.
+# Pin p4a so a future master update cannot silently change Python/pip recipes.
+p4a.commit = 0382d27de2f7315ed98e74884bafb30365decdee
 
 [buildozer]
 
-# Build output and tool working directories are managed by Buildozer.
 log_level = 2
 warn_on_root = 1
