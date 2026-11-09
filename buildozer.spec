@@ -1,11 +1,11 @@
 [app]
 
-# DebtBook - Kivy / KivyMD Android application
+# DebtBook Android application
 title = DebtBook
 package.name = debtbook
 package.domain = org.debtbook
 
-# Project files are stored at the repository root.
+# Project files are located in the repository root.
 source.dir = .
 source.include_exts = py,kv,atlas,png,jpg,jpeg,ttf,otf
 source.include_patterns = fonts/*.ttf
@@ -15,20 +15,20 @@ source.exclude_patterns = *.spec,*.yml,*.yaml,*.md,*.db,*.sqlite,*.sqlite3,*.log
 
 version = 1.0.0
 
-# sqlite3 and pathlib are part of Python's standard library.
-# Keep KivyMD 1.2.0 because the application uses its 1.x API.
-requirements = python3,kivy==2.3.1,kivymd==1.2.0,arabic-reshaper==3.0.0,python-bidi==0.4.2,future
+# Pin Android Python and host Python to the SAME version.
+# Kivy 2.3.1 is kept for compatibility with the application's code.
+requirements = python3==3.12.9,hostpython3==3.12.9,kivy==2.3.1,kivymd==1.2.0,arabic-reshaper==3.0.0,python-bidi==0.4.2,future
 
 orientation = portrait
 fullscreen = 0
 
-# Android 8.0 (API 26) and later; target API 35.
+# Android 8.0 (API 26) and newer; target API 35.
 android.minapi = 26
 android.api = 35
 android.ndk = 25c
 android.ndk_api = 26
 
-# Build both ARM architectures.
+# Build both 32-bit and 64-bit ARM variants.
 android.archs = armeabi-v7a,arm64-v8a
 
 android.private_storage = True
@@ -37,12 +37,16 @@ android.enable_androidx = True
 android.debug_artifact = apk
 android.release_artifact = apk
 
-# Use the stable p4a branch for this Python/Kivy application.
-# Do NOT set p4a.commit: Buildozer will use HEAD of this branch.
-p4a.fork = kivy
-p4a.branch = master
 p4a.bootstrap = sdl2
+p4a.fork = kivy
+
+# This commit includes the official fix for the broken temporary pip venv:
+# it clears the venv and removes the unsafe "pip install -U pip" step.
+# IMPORTANT: this commit is on the develop branch, not master.
+p4a.branch = develop
+p4a.commit = 0382d27de2f7315ed98e74884bafb30365decdee
 
 [buildozer]
+
 log_level = 2
 warn_on_root = 1
