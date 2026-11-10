@@ -66,10 +66,27 @@ jobs:
           rm -rf .buildozer bin
 
       - name: Build universal Android APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "Building with:"
+          set -euo pipefail
+          KEYSTORE_PATH="$RUNNER_TEMP/debtbook-release.jks"
+          trap 'rm -f "$KEYSTORE_PATH"' EXIT
+
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+
+          export P4A_RELEASE_KEYSTORE="$KEYSTORE_PATH"
+          export P4A_RELEASE_KEYSTORE_PASSWD="$ANDROID_KEYSTORE_PASSWORD"
+          export P4A_RELEASE_KEYALIAS="$ANDROID_KEY_ALIAS"
+          export P4A_RELEASE_KEYALIAS_PASSWD="$ANDROID_KEY_PASSWORD"
+
+          echo "Building signed release APK with:"
           java -version
-          buildozer -v android debug
+          buildozer -v android release
 
       - name: Upload APK
         if: success()
