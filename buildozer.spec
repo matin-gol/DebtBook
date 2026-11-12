@@ -1,6 +1,7 @@
 [app]
 
 title = DebtBook
+icon.filename = %(source.dir)s/assets/icon.png
 package.name = debtbook
 package.domain = org.matin
 source.dir = .

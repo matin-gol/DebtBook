@@ -10,6 +10,7 @@ from bidi.algorithm import get_display
 from kivy.core.text import LabelBase
 from kivy.core.window import Window
 from kivy.metrics import dp
+from kivy.clock import Clock
 from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
@@ -84,6 +85,86 @@ class PersianTextInput(TextInput):
 
         self.cursor = (len(self.text), 0)
 
+
+
+def normalize_digits(value):
+    """تبدیل ارقام فارسی و عربی به ارقام استاندارد انگلیسی."""
+    result = []
+    for char in str(value):
+        code = ord(char)
+        if 0x06F0 <= code <= 0x06F9:  # ارقام فارسی
+            result.append(chr(code - 0x06F0 + ord("0")))
+        elif 0x0660 <= code <= 0x0669:  # ارقام عربی
+            result.append(chr(code - 0x0660 + ord("0")))
+        else:
+            result.append(char)
+    return "".join(result)
+
+
+def to_persian_digits(value):
+    """تبدیل ارقام انگلیسی و عربی به ارقام فارسی برای نمایش در کادر."""
+    result = []
+    for char in str(value):
+        code = ord(char)
+        if 0x0030 <= code <= 0x0039:  # ارقام انگلیسی
+            result.append(chr(code - 0x0030 + 0x06F0))
+        elif 0x0660 <= code <= 0x0669:  # ارقام عربی
+            result.append(chr(code - 0x0660 + 0x06F0))
+        else:
+            result.append(char)
+    return "".join(result)
+
+
+class NumericTextInput(TextInput):
+    """ورودی مبلغ؛ ارقام فارسی، عربی و انگلیسی را می‌پذیرد و فارسی نشان می‌دهد."""
+
+    def insert_text(self, substring, from_undo=False):
+        if from_undo:
+            return super().insert_text(
+                to_persian_digits(normalize_digits(substring)),
+                from_undo=from_undo,
+            )
+
+        normalized = normalize_digits(substring)
+        # فقط عدد صحیح پذیرفته شود؛ نمایش ارقام به شکل فارسی باشد.
+        normalized = "".join(ch for ch in normalized if "0" <= ch <= "9")
+        return super().insert_text(
+            to_persian_digits(normalized),
+            from_undo=from_undo,
+        )
+
+
+def prepare_keyboard_form(content):
+    """قرار دادن فرم داخل ScrollView تا با باز شدن صفحه‌کلید قابل مشاهده بماند."""
+    content.size_hint_y = None
+    content.bind(minimum_height=content.setter("height"))
+
+    scroll = ScrollView(
+        do_scroll_x=False,
+        do_scroll_y=True,
+        bar_width=dp(3),
+        scroll_type=["bars", "content"],
+    )
+    scroll.add_widget(content)
+    return scroll
+
+
+def keep_focused_field_visible(field, scroll):
+    """پس از باز شدن کیبورد، فیلد فعال را به قسمت قابل مشاهده اسکرول می‌کند."""
+    def on_focus(instance, focused):
+        if focused:
+            # چند نوبت زمان‌بندی برای هماهنگی با انیمیشن باز شدن کیبورد اندروید
+            Clock.schedule_once(
+                lambda dt: scroll.scroll_to(instance, padding=dp(35), animate=True),
+                0.25,
+            )
+            Clock.schedule_once(
+                lambda dt: scroll.scroll_to(instance, padding=dp(35), animate=True),
+                0.55,
+            )
+    field.bind(focus=on_focus)
+
+
 class PersianSpinnerOption(SpinnerOption):
 
     font_name = "Vazirmatn"
@@ -95,6 +176,9 @@ class DebtBookDesign(MDApp):
     def build(self):
 
         self.theme_cls.theme_style = "Dark"
+        # در اندروید فضای فرم با باز شدن صفحه‌کلید تنظیم شود.
+        if platform == "android":
+            Window.softinput_mode = "below_target"
         self.theme_cls.primary_palette = "Teal"
         self.theme_cls.accent_palette = "Amber"
 
@@ -390,13 +474,12 @@ class DebtBookDesign(MDApp):
 
         # فیلد مبلغ بدهی
         # فیلد مبلغ بدهی
-        debt_input = TextInput(
+        debt_input = NumericTextInput(
             hint_text=persian_text("مبلغ بدهی به تومان"),
             font_name="Vazirmatn",
             font_size=dp(17),
             multiline=False,
             halign="right",
-            input_filter="int",
             size_hint_y=None,
             height=dp(55),
             padding=[dp(12), dp(15)],
@@ -415,6 +498,7 @@ class DebtBookDesign(MDApp):
             font_name="Vazirmatn",
             font_size="16sp",
             size_hint_x=1,
+            size_hint_y=None,
             height=dp(50)
         )
 
@@ -423,17 +507,23 @@ class DebtBookDesign(MDApp):
         content.add_widget(debt_input)
         content.add_widget(save_button)
 
+        form_scroll = prepare_keyboard_form(content)
+
         popup = Popup(
             title=persian_text("افزودن بدهکار"),
             title_font="Vazirmatn",
-            content=content,
+            content=form_scroll,
             size_hint=(0.9, 0.5)
         )
+
+        keep_focused_field_visible(name_input, form_scroll)
+
+        keep_focused_field_visible(debt_input, form_scroll)
 
         def save_debtor(instance):
 
             name = name_input.raw_text.strip()
-            debt_text = debt_input.text.strip()
+            debt_text = normalize_digits(debt_input.text.strip())
 
             # بررسی خالی نبودن فیلدها
             if not name or not debt_text:
@@ -531,7 +621,7 @@ class DebtBookDesign(MDApp):
         debtor_spinner = Spinner(
             text=persian_text("انتخاب بدهکار"),
             values=list(debtor_options.keys()),
-            option_cls="PersianSpinnerOption",
+            option_cls=PersianSpinnerOption,
             font_name="Vazirmatn",
             font_size=dp(16),
             size_hint_y=None,
@@ -539,13 +629,12 @@ class DebtBookDesign(MDApp):
         )
 
         # فیلد مبلغ پرداختی
-        payment_input = TextInput(
+        payment_input = NumericTextInput(
             hint_text=persian_text("مبلغ پرداختی به تومان"),
             font_name="Vazirmatn",
             font_size=dp(17),
             multiline=False,
             halign="right",
-            input_filter="int",
             size_hint_y=None,
             height=dp(55),
             padding=[dp(12), dp(15)],
@@ -562,6 +651,7 @@ class DebtBookDesign(MDApp):
             font_name="Vazirmatn",
             font_size="16sp",
             size_hint_x=1,
+            size_hint_y=None,
             height=dp(50)
         )
 
@@ -571,18 +661,22 @@ class DebtBookDesign(MDApp):
         content.add_widget(save_button)
 
         # ساخت پنجره
+        form_scroll = prepare_keyboard_form(content)
+
         popup = Popup(
             title=persian_text("ثبت پرداخت"),
             title_font="Vazirmatn",
-            content=content,
+            content=form_scroll,
             size_hint=(0.9, 0.5)
         )
+
+        keep_focused_field_visible(payment_input, form_scroll)
 
         # عملیات ذخیره پرداخت
         def save_payment(instance):
 
             selected_name = debtor_spinner.text
-            payment_text = payment_input.text.strip()
+            payment_text = normalize_digits(payment_input.text.strip())
 
             # بررسی انتخاب بدهکار
             if selected_name not in debtor_options:
@@ -696,13 +790,12 @@ class DebtBookDesign(MDApp):
         )
 
         # فیلد مبلغ بدهی
-        debt_input = TextInput(
+        debt_input = NumericTextInput(
             hint_text=persian_text("مبلغ بدهی به تومان"),
             font_name="Vazirmatn",
             font_size=dp(17),
             multiline=False,
             halign="right",
-            input_filter="int",
             size_hint_y=None,
             height=dp(55),
             padding=[dp(12), dp(15)],
@@ -729,7 +822,7 @@ class DebtBookDesign(MDApp):
             name_input.text = persian_text(name)
             name_input.cursor = (len(name_input.text), 0)
 
-            debt_input.text = str(int(debt))
+            debt_input.text = to_persian_digits(int(debt))
 
         debtor_spinner.bind(text=select_debtor)
 
@@ -739,6 +832,7 @@ class DebtBookDesign(MDApp):
             font_name="Vazirmatn",
             font_size="16sp",
             size_hint_x=1,
+            size_hint_y=None,
             height=dp(50)
         )
 
@@ -748,19 +842,25 @@ class DebtBookDesign(MDApp):
         content.add_widget(debt_input)
         content.add_widget(save_button)
 
+        form_scroll = prepare_keyboard_form(content)
+
         popup = Popup(
             title=persian_text("ویرایش بدهکار"),
             title_font="Vazirmatn",
-            content=content,
+            content=form_scroll,
             size_hint=(0.9, 0.6)
         )
+
+        keep_focused_field_visible(name_input, form_scroll)
+
+        keep_focused_field_visible(debt_input, form_scroll)
 
         # ذخیره اطلاعات ویرایش‌شده
         def save_changes(instance):
 
             person_id = selected_person["id"]
             new_name = name_input.raw_text.strip()
-            debt_text = debt_input.text.strip()
+            debt_text = normalize_digits(debt_input.text.strip())
 
             if person_id is None:
                 self.show_message("لطفاً ابتدا یک بدهکار انتخاب کنید.")
@@ -1046,3 +1146,4 @@ class DebtBookDesign(MDApp):
 
 if __name__ == "__main__":
     DebtBookDesign().run()
+
